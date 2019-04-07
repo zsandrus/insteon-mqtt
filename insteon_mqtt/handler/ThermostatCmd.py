@@ -14,19 +14,19 @@ LOG = log.get_logger()
 class ThermostatCmd(Base):
     """Thermostat direct message handler.
 
-    The thermostats send direct messages concerning changes in their
-    temp, humid, mode, and status.  This catches those messages,
-    confirms they are sent from a thermostat and processes them
-    accordingly.
+    The thermostats send direct messages concerning changes in their temp,
+    humid, mode, and status.  This catches those messages, confirms they are
+    sent from a thermostat and processes them accordingly.
 
-    This hander is added to the protocol handlers whenever a thermostat is 
+    This hander is added to the protocol handlers whenever a thermostat is
     loaded.
 
     NOTE: This handler is designed to always be active - it never returns
     FINISHED.
     """
-    # Irritatingly, this mapping is different for direct status messages.
-    # Insteon loves to be irritating like that
+
+    # This mapping is different from the Thermostat mapping used in response
+    # to a get_status message even though the names are the same.
     class Mode(enum.IntEnum):
         OFF = 0x00
         HEAT = 0x01
@@ -38,7 +38,7 @@ class ThermostatCmd(Base):
         """Constructor
 
         Args
-          device:   (Device) The Insteon thermostat object.
+          device (Device):  The Insteon thermostat object.
         """
         super().__init__()
         self.device = device
@@ -47,11 +47,9 @@ class ThermostatCmd(Base):
     def msg_received(self, protocol, msg):
         """See if we can handle the message.
 
-        Try and process the message.
-
         Args:
-          protocol:  (Protocol) The Insteon Protocol object
-          msg:       Insteon message object that was read.
+          protocol (Protocol):  The Insteon Protocol object
+          msg:  Insteon message object that was read.
 
         Returns:
           Msg.UNKNOWN if we can't handle this message.
@@ -74,10 +72,12 @@ class ThermostatCmd(Base):
         if not device:
             LOG.debug("Unknown direct device %s", msg.from_addr)
             return Msg.UNKNOWN
+
         elif device != self.device:
             LOG.debug("This handler doesn't handle this device %s",
                       msg.from_addr)
             return Msg.UNKNOWN
+
         elif msg.flags.type != Msg.Flags.Type.DIRECT:
             LOG.debug("This handler doesn't handle this type of message %s",
                       Msg.Flags.Type)
@@ -87,33 +87,44 @@ class ThermostatCmd(Base):
         if msg.cmd1 == STATUS_TEMP:
             temp = int(msg.cmd2) * 0.5
             if self.device.units == self.device.FARENHEIT:
-                temp = (temp - 32) * 5/9
+                temp = (temp - 32) * 5 / 9
             self.device.signal_ambient_temp_change.emit(self.device, temp)
             return Msg.CONTINUE
+
         elif msg.cmd1 == STATUS_HUMID:
             self.device.signal_ambient_humid_change.emit(self.device, int(msg.cmd2))
             return Msg.CONTINUE
+
         elif msg.cmd1 == STATUS_MODE:
             fan_nibble = int(msg.cmd2) >> 4
             mode_nibble = int(msg.cmd2) & 0b00001111
             self.device.set_fan_mode_state(fan_nibble)
             try:
-                hvac_mode = ThermostatCmd.Mode(mode_nibble)
+                # Convert from the handler mode to the ThermostatMode since
+                # the integer codes are different.  We can use the enum names
+                # to map between the enums even though they have different
+                # modes.  This way the signal always emits Thermostat.Mode
+                # flags.
+                local_mode = ThermostatCmd.Mode(mode_nibble)
+                hvac_mode = self.device.Mode[local_mode.name]
             except ValueError:
                 LOG.exception("Unknown mode broadcast state %s.", mode_nibble)
             else:
                 self.device.signal_mode_change.emit(self.device, hvac_mode)
+
             return Msg.CONTINUE
+
         elif msg.cmd1 == STATUS_COOL_SP:
             cool_sp = int(msg.cmd2)
             if self.device.units == self.device.FARENHEIT:
-                cool_sp = (cool_sp - 32) * 5/9
+                cool_sp = (cool_sp - 32) * 5 / 9
             self.device.signal_cool_sp_change.emit(self.device, cool_sp)
             return Msg.CONTINUE
+
         elif msg.cmd1 == STATUS_HEAT_SP:
             heat_sp = int(msg.cmd2)
             if self.device.units == self.device.FARENHEIT:
-                heat_sp = (heat_sp - 32) * 5/9
+                heat_sp = (heat_sp - 32) * 5 / 9
             self.device.signal_heat_sp_change.emit(self.device, heat_sp)
             return Msg.CONTINUE
         elif msg.cmd1 == STATUS_TEMP_EXT:
