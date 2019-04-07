@@ -44,6 +44,7 @@ class Thermostat(Base):
         HEATING = 0x02
         HUMID_HIGH = 0x03
         HUMID_LOW = 0x04
+        UNKNOWN = 0x05
         BROADCAST = 0xEF
 
     # Mapping of fan states
@@ -86,6 +87,7 @@ class Thermostat(Base):
             })
 
         self.signal_ambient_temp_change = Signal()  # emit(device, Int temp_c)
+        self.signal_external_temp_change = Signal()  # emit(device, Int temp_c)
         self.signal_fan_mode_change = Signal()  # emit(device, Fan fan mode)
         self.signal_mode_change = Signal()  # emit(device, Mode mode)
         self.signal_cool_sp_change = Signal()  # emit(device, Int cool_sp in c)
@@ -122,10 +124,12 @@ class Thermostat(Base):
         # be up to date or bad things will happen.
         seq.add(self.refresh)
 
-        # Add the device as a responder to the modem on group 1.  This is
+        # Add the device as a responder to the modem on group 0 and 1.  This is
         # probably already there - and maybe needs to be there before we can
         # even issue any commands but this check insures that the link is
         # present on the device and the modem.
+        seq.add(self.db_add_resp_of, 0x00, self.modem.addr, 0x00,
+                refresh=False)
         seq.add(self.db_add_resp_of, 0x01, self.modem.addr, 0x01,
                 refresh=False)
 

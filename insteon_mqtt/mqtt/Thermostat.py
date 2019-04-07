@@ -55,9 +55,14 @@ class Thermostat:
             topic='insteon/{{address}}/status_state',
             payload='{{status}}',
             )
+        self.external_temp = MsgTemplate(
+            topic='insteon/{{address}}/external_temp',
+            payload='{"temp_f" : {{temp_f}}, "temp_c" : {{temp_c}}}',
+            )
 
         # Receive notifications from the Insteon device when it changes.
         device.signal_ambient_temp_change.connect(self.handle_ambient_temp_change)
+        device.signal_external_temp_change.connect(self.handle_external_temp_change)
         device.signal_fan_mode_change.connect(self.handle_fan_mode_change)
         device.signal_mode_change.connect(self.handle_mode_change)
         device.signal_cool_sp_change.connect(self.handle_cool_sp_change)
@@ -80,6 +85,7 @@ class Thermostat:
 
         # Update the MQTT topics and payloads from the config file.
         self.ambient_temp.load_config(data, 'ambient_temp_topic', 'ambient_temp_payload', qos)
+        self.external_temp.load_config(data, 'external_temp_topic', 'external_temp_payload', qos)
         self.fan_state.load_config(data, 'fan_state_topic', 'fan_state_payload', qos)
         self.mode_state.load_config(data, 'mode_state_topic', 'mode_state_payload', qos)
         self.cool_sp_state.load_config(data, 'cool_sp_state_topic', 'cool_sp_state_payload', qos)
@@ -130,6 +136,30 @@ class Thermostat:
 
         # Publish topic
         self.ambient_temp.publish(self.mqtt, data)
+
+    #-----------------------------------------------------------------------
+    def handle_external_temp_change(self, device, temp_c):
+        """Posts to mqtt changes in ambient temperature
+
+        This is triggered via signal when the ambient temp changes.
+
+        Args:
+          device:    (device.Base) The Insteon device that changed.
+          temp_c:    the temp in Celsius.
+        """
+        LOG.info("MQTT received external temp change %s = %s C", device.label,
+                 temp_c)
+
+        # Set up the variables that can be used in the templates.
+        data = {
+            "address" : device.addr.hex,
+            "name" : device.name if device.name else device.addr.hex,
+            "temp_c": temp_c,
+            "temp_f": round((temp_c * 9) / 5 + 32, 1)
+            }
+
+        # Publish topic
+        self.external_temp.publish(self.mqtt, data)
 
     #-----------------------------------------------------------------------
     def handle_fan_mode_change(self, device, fan_mode):

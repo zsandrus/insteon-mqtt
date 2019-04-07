@@ -63,6 +63,7 @@ class ThermostatCmd(Base):
         STATUS_MODE     = 0x70
         STATUS_COOL_SP  = 0x71
         STATUS_HEAT_SP  = 0x72
+        STATUS_TEMP_EXT  = 0x73
 
         # Confirm this is a message we can handle
         if not isinstance(msg, Msg.InpStandard):
@@ -84,13 +85,13 @@ class ThermostatCmd(Base):
 
         # Pull out and process the commands that this handler handles
         if msg.cmd1 == STATUS_TEMP:
-            temp = int(msg.cmd2)
+            temp = int(msg.cmd2) * 0.5
             if self.device.units == self.device.FARENHEIT:
                 temp = (temp - 32) * 5/9
             self.device.signal_ambient_temp_change.emit(self.device, temp)
             return Msg.CONTINUE
         elif msg.cmd1 == STATUS_HUMID:
-            self.device.signal_humid_change.emit(self.device, int(msg.cmd2))
+            self.device.signal_ambient_humid_change.emit(self.device, int(msg.cmd2))
             return Msg.CONTINUE
         elif msg.cmd1 == STATUS_MODE:
             fan_nibble = int(msg.cmd2) >> 4
@@ -114,6 +115,12 @@ class ThermostatCmd(Base):
             if self.device.units == self.device.FARENHEIT:
                 heat_sp = (heat_sp - 32) * 5/9
             self.device.signal_heat_sp_change.emit(self.device, heat_sp)
+            return Msg.CONTINUE
+        elif msg.cmd1 == STATUS_TEMP_EXT:
+            temp = int(msg.cmd2)
+            if self.device.units == self.device.FARENHEIT:
+                temp = (temp - 32) * 5/9
+            self.device.signal_external_temp_change.emit(self.device, temp)
             return Msg.CONTINUE
         else:
             return Msg.UNKNOWN
