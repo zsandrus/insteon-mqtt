@@ -31,6 +31,9 @@ class Thermostat:
         self.ambient_temp = MsgTemplate(
             topic='insteon/{{address}}/ambient_temp',
             payload='{"temp_f" : {{temp_f}}, "temp_c" : {{temp_c}}}')
+        self.external_temp = MsgTemplate(
+            topic='insteon/{{address}}/external_temp',
+            payload='{"temp_f" : {{temp_f}}, "temp_c" : {{temp_c}}}')
         self.fan_state = MsgTemplate(
             topic='insteon/{{address}}/fan_state',
             payload='{{fan_mode}}')
@@ -73,6 +76,8 @@ class Thermostat:
         # Receive notifications from the Insteon device when it changes.
         device.signal_ambient_temp_change.connect(
             self._insteon_ambient_temp_change)
+        device.signal_external_temp_change.connect(
+            self._insteon_external_temp_change)
         device.signal_fan_mode_change.connect(self._insteon_fan_mode_change)
         device.signal_mode_change.connect(self._insteon_mode_change)
         device.signal_cool_sp_change.connect(self._insteon_cool_sp_change)
@@ -99,6 +104,8 @@ class Thermostat:
         # Update the MQTT topics and payloads from the config file.
         self.ambient_temp.load_config(data, 'ambient_temp_topic',
                                       'ambient_temp_payload', qos)
+        self.external_temp.load_config(data, 'external_temp_topic',
+                                      'external_temp_payload', qos)
         self.fan_state.load_config(data, 'fan_state_topic',
                                    'fan_state_payload', qos)
         self.mode_state.load_config(data, 'mode_state_topic',
@@ -200,6 +207,26 @@ class Thermostat:
         data["temp_f"] = round((temp_c * 9) / 5 + 32, 1)
 
         self.ambient_temp.publish(self.mqtt, data)
+
+    #-----------------------------------------------------------------------
+    def _insteon_external_temp_change(self, device, temp_c):
+        """Posts to mqtt changes in external temperature
+
+        This is triggered via signal when the external temp changes.
+
+        Args:
+          device (device.Thermostat):  The Insteon device that changed.
+          temp_c (float):  The temp in Celsius.
+        """
+        LOG.info("MQTT received external temp change %s = %s C", device.label,
+                 temp_c)
+
+        # Set up the variables that can be used in the templates.
+        data = self.template_data()
+        data["temp_c"] = temp_c
+        data["temp_f"] = round((temp_c * 9) / 5 + 32, 1)
+
+        self.external_temp.publish(self.mqtt, data)
 
     #-----------------------------------------------------------------------
     def _insteon_fan_mode_change(self, device, fan_mode):

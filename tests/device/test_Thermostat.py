@@ -18,6 +18,8 @@ class Test_Thermostat:
         # setup signal tracking
         thermo.signal_ambient_temp_change.connect(
             self.handle_ambient_temp_change)
+        thermo.signal_external_temp_change.connect(
+            self.handle_external_temp_change)
         thermo.signal_fan_mode_change.connect(self.handle_fan_mode_change)
         thermo.signal_mode_change.connect(self.handle_mode_change)
         thermo.signal_cool_sp_change.connect(self.handle_cool_sp_change)
