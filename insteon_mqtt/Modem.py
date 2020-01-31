@@ -15,6 +15,7 @@ from . import message as Msg
 from . import util
 from . import Scenes
 from .Signal import Signal
+from .device import BatterySensor
 
 LOG = log.get_logger()
 
@@ -316,7 +317,7 @@ class Modem:
         return device
 
     #-----------------------------------------------------------------------
-    def refresh_all(self, force=False, on_done=None):
+    def refresh_all(self, skip_battery=True, force=False, on_done=None):
         """Refresh all the all link databases.
 
         This forces a refresh of the modem and device databases.  This can
@@ -341,6 +342,9 @@ class Modem:
 
         # Reload all the device databases.
         for device in self.devices.values():
+            if skip_battery and isinstance(device, BatterySensor):
+                LOG.ui("Refresh all, skipping battery device %s", device.label)
+                continue
             seq.add(device.refresh, force)
 
         # Start the command sequence.
