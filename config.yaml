@@ -51,6 +51,14 @@ insteon:
   # startup.  This may be slow depending on the number of devices.
   startup_refresh: False
 
+  # Path to Scenes Definition file (Optional)
+  # The path can be specified either as an absolute path or as a relative path 
+  # using the !rel_path directive.  Where the path is relative to the
+  # config.yaml location
+  #
+  #scenes: /home/user/insteon_mqtt/scenes.yaml
+  #scenes: !rel_path scenes.yaml
+
   #------------------------------------------------------------------------
   # Devices require the Insteon hex address and an optional name. Note
   # that MQTT address topics are always the lower case hex address or
@@ -60,7 +68,7 @@ insteon:
     switch:
       - 3a.29.84: 'xmas tree'
       - 26.48.ff: 'xmas stairs'
-      - 37.2d.20: 'xmas deck'
+      - 37.2d.20: 'deck'
 
     # Dimming devices (outlets, wall switches, lamp modules, etc).
     dimmer:
@@ -77,9 +85,11 @@ insteon:
       - 21.d6.d9: 'door'
 
     # Battery powered mini remotes.
-    mini_remote4:
+    mini_remote1:  # Single Button Remotes
 
-    mini_remote8:
+    mini_remote4:  # Remotes with 4 Buttons
+
+    mini_remote8:  # Remotes with 8 Buttons
       - 3f.07.d4: 'remote1'
 
     # Smoke bridge module.
@@ -113,12 +123,6 @@ insteon:
     # Thermostatus
     thermostat:
     #  - aa.bb.cc: 'downstairs'
-
-  #------------------------------------------------------------------------
-  # FUTURE: Insteon scene definitions.
-  #scenes:
-  #  - scene_01:
-
 
 #==========================================================================
 #
@@ -163,10 +167,19 @@ mqtt:
   #       command_topic: "insteon/modem/scene"
   #       payload_on: { "cmd" : "on", "group" : 10 }
   #       payload_off: { "cmd" : "off", "group" : 10 }
+  # In Home Assistant use MQTT switch with a configuration like this to trigger
+  # modem scene named 'test_scene':
+  #   switch:
+  #     - platform: mqtt
+  #       name: "test_scene"
+  #       command_topic: "insteon/modem/scene"
+  #       payload_on: { "cmd" : "on", "name" : test_scene }
+  #       payload_off: { "cmd" : "off", "name" : test_scene }
   modem:
     # The output of passing the payload through the template must match the
-    # following where group is in the range 1-255.
-    #   { "cmd" : 'on'/'off', "group" : GROUP }
+    # following where group is in the range 1-255 and NAME is a string name
+    # defined in a scenes.yaml file.  Either GROUP or NAME must be specified.
+    #   { "cmd" : 'on'/'off', ["group" : GROUP, "name": NAME] }
     # Available variables for templating are:
     #   value = the input payload
     #   json = the input payload converted to json.  Use json.VAR to extract
@@ -184,16 +197,16 @@ mqtt:
   # On/off switches
   #------------------------------------------------------------------------
 
-  # On/Off switch.  Non-dimming lamp modules and wall switches.
-  # In Home Assistant use MQTT switch with a configuration like:
+  # On/Off switch.  Non-dimming lamp modules and wall switches.  In Home
+  # Assistant use MQTT switch with a configuration like:
   #   switch:
   #     - platform: mqtt
   #       state_topic: 'insteon/aa.bb.cc/state'
   #       command_topic: 'insteon/aa.bb.cc/set'
   switch:
-    # Output state change topic and template.  This message is sent
-    # whenever the device state changes for any reason.  Available
-    # variables for templating are:
+    # Output state change topic and template.  This message is sent whenever
+    # the device state changes for any reason.  Available variables for
+    # templating are:
     #   address = 'aa.bb.cc'
     #   name = 'device name'
     #   on = 0/1
@@ -201,6 +214,7 @@ mqtt:
     #   mode = 'normal'/'fast'/'instant'
     #   fast = 0/1
     #   instant = 0/1
+    #   reason = 'device'/'scene'/'command'/'refresh'/'...'
     state_topic: 'insteon/{{address}}/state'
     state_payload: '{{on_str.upper()}}'
 
@@ -213,11 +227,12 @@ mqtt:
     #manual_state_topic: 'insteon/{{address}}/manual_state'
     #manual_state_payload: '{{manual_str.upper()}}'
 
-    # Input on/off command.  Similar functionality to the cmd_topic
-    # but only for turning the device on and off.  The output of
-    # passing the payload through the template must match the following:
+    # Input on/off command.  Similar functionality to the cmd_topic but only
+    # for turning the device on and off.  If reason is input, is will be
+    # passed through to the state_payload.  The output of passing the payload
+    # through the template must match the following:
     #   { "cmd" : 'on'/'off', ["mode" : 'normal'/'fast'/'instant'],
-    #                         ["fast" : 1/0], ["instant" : 1/0] }
+    #             ["fast" : 1/0], ["instant" : 1/0], ["reason" : "..."] }
     # Available variables for templating are:
     #   value = the input payload
     #   json = the input payload converted to json.  Use json.VAR to extract
@@ -260,6 +275,7 @@ mqtt:
     #   mode = 'normal'/'fast'/'instant'
     #   fast = 0/1
     #   instant = 0/1
+    #   reason = 'device'/'scene'/'command'/'refresh'/'...'
     state_topic: 'insteon/{{address}}/state'
     state_payload: >
        { "state" : "{{on_str.upper()}}", "brightness" : {{level_255}} }
@@ -273,11 +289,12 @@ mqtt:
     #manual_state_topic: 'insteon/{{address}}/manual_state'
     #manual_state_payload: '{{manual_str.upper()}}'
 
-    # Input on/off command.  Similar functionality to the cmd_topic
-    # but only for turning the device on and off.  The output of
-    # passing the payload through the template must match the following:
+    # Input on/off command.  Similar functionality to the cmd_topic but only
+    # for turning the device on and off.  If reason is input, is will be
+    # passed through to the state_payload.  The output of passing the payload
+    # through the template must match the following:
     #   { "cmd" : "on"/"off", ["mode" : 'normal'/'fast'/'instant'],
-    #                         ["fast" : 1/0], ["instant" : 1/0] }
+    #             ["fast" : 1/0], ["instant" : 1/0], ["reason" : "..."] } }
     # Available variables for templating are:
     #   address = 'aa.bb.cc'
     #   name = 'device name'
@@ -290,8 +307,9 @@ mqtt:
     on_off_payload: '{ "cmd" : "{{value.lower()}}" }'
 
     # Input dimming on/off command.  Similar functionality to the cmd_topic
-    # but only for turning the device on and off and setting the level.
-    # The output of passing the payload through the template must match the
+    # but only for turning the device on and off and setting the level.  If
+    # reason is input, is will be passed through to the state_payload.  The
+    # output of passing the payload through the template must match the
     # following:
     #   { "cmd" : "on"/"off", "level" : LEVEL,
     #                         ["mode" : 'normal'/'fast'/'instant'],
@@ -575,7 +593,7 @@ mqtt:
     # whenever a button is pressed.  Available variables for templating are:
     #   address = 'aa.bb.cc'
     #   name = 'device name'
-    #   button = 1...n  (button number 1-4 or 1-8)
+    #   button = 1...n  (button number 1-8 depending on configuration)
     #   on = 0/1
     #   on_str = 'off'/'on'
     #   mode = 'normal'/'fast'/'instant'
@@ -627,13 +645,15 @@ mqtt:
     #   on_str = 'off'/'on'
     #   level = 0/1/2/3
     #   level_str = 'off'/'low'/'medium'/'high'
+    #   reason = 'device'/'scene'/'command'/'refresh'/'...'
     fan_state_topic: 'insteon/{{address}}/fan/state'
     fan_state_payload: '{{on_str.upper()}}'
 
-    # Fan on/off command.  Similar functionality to the cmd_topic
-    # but only for turning the device on and off.  The output of
-    # passing the payload through the template must match the following:
-    #   { "cmd" : "on"/"off" }
+    # Fan on/off command.  Similar functionality to the cmd_topic but only
+    # for turning the device on and off.  If reason is input, is will be
+    # passed through to the state_payload.  The output of passing the payload
+    # through the template must match the following:
+    #   { "cmd" : "on"/"off", ["reason" : "..."] }
     # Available variables for templating are:
     #   address = 'aa.bb.cc'
     #   name = 'device name'
@@ -649,10 +669,11 @@ mqtt:
     fan_speed_topic: 'insteon/{{address}}/fan/speed/state'
     fan_speed_payload: '{{level_str}}'
 
-    # Fan speed change command.  Similar functionality to the cmd_topic
-    # but only for turning the device on and off.  The output of
-    # passing the payload through the template must match the following:
-    #   { "cmd" : SPEED }
+    # Fan speed change command.  Similar functionality to the cmd_topic but
+    # only for turning the device on and off.  If reason is input, is will be
+    # passed through to the state_payload.  The output of passing the payload
+    # through the template must match the following:
+    #   { "cmd" : SPEED, ["reason" : "..."] }
     # where
     #   SPEED = 0/1/2/3 (for off, low, medium, high)
     #      or = "off"/"low"/"medium"/"high"
@@ -663,7 +684,7 @@ mqtt:
     #   json = the input payload converted to json.  Use json.VAR to extract
     #          a variable from a json payload.
     fan_speed_set_topic: 'insteon/{{address}}/fan/speed/set'
-    fan_speed_set_payload: '{ "cmd" : "{{value.lower}}" }'
+    fan_speed_set_payload: '{ "cmd" : "{{value.lower()}}" }'
 
   #------------------------------------------------------------------------
   # Keypad Linc
@@ -715,6 +736,7 @@ mqtt:
     #   mode = 'normal'/'fast'/'instant'
     #   fast = 0/1
     #   instant = 0/1
+    #   reason = 'device'/'scene'/'command'/'refresh'/'...'
     btn_state_topic: 'insteon/{{address}}/state/{{button}}'
     btn_state_payload: '{{on_str.upper()}}'
 
@@ -730,6 +752,7 @@ mqtt:
     #   mode = 'normal'/'fast'/'instant'
     #   fast = 0/1
     #   instant = 0/1
+    #   reason = 'device'/'scene'/'command'/'refresh'/'...'
     dimmer_state_topic: 'insteon/{{address}}/state/1'
     dimmer_state_payload: >
        { "state" : "{{on_str.upper()}}", "brightness" : {{level_255}} }
@@ -744,11 +767,12 @@ mqtt:
     #manual_state_payload: '{{manual_str.upper()}}'
 
     # Input on/off command.  For button 1, this will set the load.  For other
-    # buttons, it just set the button LED.  The output of passing the payload
+    # buttons, it just set the button LED.  If reason is input, is will be
+    # passed through to the state_payload.  The output of passing the payload
     # through the template must match the following:
     #   { "cmd" : 'on'/'off', "button": button,
-    #                         ["mode" : 'normal'/'fast'/'instant'],
-    #                         ["fast" : 1/0], ["instant" : 1/0] }
+    #             ["mode" : 'normal'/'fast'/'instant'],
+    #             ["fast" : 1/0], ["instant" : 1/0], ["reason" : "..."] }
     # Available variables for templating are:
     #   value = the input payload
     #   json = the input payload converted to json.  Use json.VAR to extract
@@ -759,11 +783,12 @@ mqtt:
     # Input dimming on/off command for button 1.  Similar functionality to
     # the cmd_topic but only for turning the group 1 on and off and setting
     # the level.  This topic can be the same as the btn_on_off_topic in which
-    # case either command format is valid.   The output of passing the
+    # case either command format is valid.   If reason is input, is will be
+    # passed through to the state_payload.  The output of passing the
     # payload through the template must match the following:
     #   { "cmd" : "on"/"off", "level" : LEVEL,
-    #                         ["mode" : 'normal'/'fast'/'instant'],
-    #                         ["fast" : 1/0], ["instant" : 1/0] }
+    #             ["mode" : 'normal'/'fast'/'instant'],
+    #             ["fast" : 1/0], ["instant" : 1/0], ["reason" : "..."] }
     # where:
     #   LEVEL = 0->255 dimmer level
     # Available variables for templating are:
@@ -870,15 +895,17 @@ mqtt:
     #   mode = 'normal'/'fast'/'instant'
     #   fast = 0/1
     #   instant = 0/1
+    #   reason = 'device'/'scene'/'command'/'refresh'/'...'
     state_topic: 'insteon/{{address}}/state/{{button}}'
     state_payload: '{{on_str.upper()}}'
 
-    # Input on/off command.  Similar functionality to the cmd_topic
-    # but only for turning the device on and off.  The output of
-    # passing the payload through the template must match the following:
+    # Input on/off command.  Similar functionality to the cmd_topic but only
+    # for turning the device on and off.  If reason is input, is will be
+    # passed through to the state_payload.  The output of passing the payload
+    # through the template must match the following:
     #   { "cmd" : 'on'/'off', "button": button,
-    #                         ["mode" : 'normal'/'fast'/'instant'],
-    #                         ["fast" : 1/0], ["instant" : 1/0] }
+    #             ["mode" : 'normal'/'fast'/'instant'],
+    #             ["fast" : 1/0], ["instant" : 1/0], ["reason" : "..."] }
     # Available variables for templating are:
     #   value = the input payload
     #   json = the input payload converted to json.  Use json.VAR to extract

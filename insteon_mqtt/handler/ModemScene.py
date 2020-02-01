@@ -6,6 +6,7 @@
 from .. import log
 from .. import message as Msg
 from .Base import Base
+from ..message.Flags import Flags
 
 LOG = log.get_logger()
 
@@ -56,8 +57,36 @@ class ModemScene(Base):
             self.on_done(False, "Scene command failed", None)
             return Msg.FINISHED
 
-        # The next message should be an InpAllLinkStatus which tells us the
-        # command went out.
+        # Next we should get cleanup_acks from each device
+        elif (isinstance(msg, Msg.InpStandard) and
+              msg.flags.type == Flags.Type.CLEANUP_ACK and
+              msg.group == self.msg.group):
+            device = self.modem.find(msg.from_addr)
+            if device:
+                LOG.debug("%s broadcast to %s for group %s was ack'd",
+                          self.modem.label, device.addr, msg.group)
+                device.handle_group_cmd(msg.from_addr, msg)
+            else:
+                LOG.warning("%s broadcast - ack for device %s not found",
+                            self.modem.label, msg.from_addr)
+            return Msg.CONTINUE
+
+        # This is an all link failure report.
+        elif (isinstance(msg, Msg.InpAllLinkFailure) and
+              msg.group == self.msg.group):
+            LOG.error("%s failed to respond to broadcast for group %s",
+                      msg.addr, msg.group)
+            return Msg.CONTINUE
+
+        # This is a NAK response from a device.
+        elif (isinstance(msg, Msg.InpStandard) and
+              msg.flags.type == Flags.Type.CLEANUP_NAK):
+            LOG.error("%s responded NAK to broadcast for group %s",
+                      msg.from_addr, self.msg.group)
+            return Msg.CONTINUE
+
+        # Finally there should be an InpAllLinkStatus which tells us the
+        # scene command is complete.
         elif isinstance(msg, Msg.InpAllLinkStatus):
             if msg.is_ack:
                 LOG.debug("Modem scene %s command ACK", self.msg.group)

@@ -44,8 +44,10 @@ be identified by it's address or the string "modem".
 
 When adding a new device or after performing a factory reset on a device it
 is necessary to perform a three step process to setup the device to work
-properly with insteon-mqtt.  The steps are 1) Join, 2) Pair, and 3) Sync (Not
-implemented yet).  These three commands can be re-run at anytime without harm.
+properly with insteon-mqtt.  The steps are 1) Join, 2) Pair, and 3) Sync
+(only if you have scenes defined for this device in a scenes.yaml file).  
+The Join and Pair commands can be re-run at anytime without harm.  You can also
+run sync in dry-run mode at any time to see what changes would be made.
 
 From the command line these actions can be performed as follows:
 
@@ -83,10 +85,16 @@ brackets [], then it's optional.  If a value can be one of many like
 true or false, then the possible values are separated by a slash /.
 
 The MQTT topic to publish management commands to is (aa.bb.cc is the
-device address or nice name from the config.yaml file):
+example device address):
 
    ```
    insteon/command/aa.bb.cc
+   ```
+
+Alternatively you can use the nice names from the config.yaml file too:
+
+   ```
+   insteon/command/NICE NAME
    ```
 
 ### Join a New Device to the Network
@@ -136,12 +144,89 @@ This command can also be run from the command line:
    ```
 
 
-### Sync Device Links (Placeholder)
+### Sync Device Links
 
 Supported: modem, device
 
-This command is not yet supported.
+This function will alter the device's link database to match the scenes
+defined in the scenes.yaml file.  This includes adding new links as well as
+deleting un-defined links.  Details can be found in [Scene Management](scenes.md)
 
+The command payload is below.  Setting the dry_run flag to true will cause the
+changes to be made to the device, the default false will only report what would
+happen:
+
+  ```
+  { "cmd" : "sync", ["dry_run" : true/false]}
+  ```
+
+  This command can also be run from the command line:
+
+   ```
+   insteon-mqtt config.yaml sync aa.bb.cc
+   ```
+
+### Sync All Device Links
+
+Supported: modem
+
+This function will perform the sync command on all devices.
+
+The command payload is as follows.  Setting the dry_run flag to true will cause
+the changes to be made to the device, the default false will only report what
+would happen:
+
+  ```
+  { "cmd" : "sync_all", ["dry_run" : true/false]}
+  ```
+
+ This command can also be run from the command line:
+
+  ```
+  insteon-mqtt config.yaml sync-all
+  ```
+
+### Import Device Links
+
+Supported: modem, device
+
+The 'import-scenes' function will take the links defined on each device and
+parse them into a scene which can be saved to the scenes.yaml file.  Please
+read the in [Scene Management](scenes.md)
+
+The command payload is below.  Setting the dry_run flag to true will cause the
+changes to be made to the file, the default false will only report what would
+happen:
+
+  ```
+  { "cmd" : "import_scenes", ["dry_run" : true/false]}
+  ```
+
+  This command can also be run from the command line:
+
+   ```
+   insteon-mqtt config.yaml import-scenes aa.bb.cc
+   ```
+
+### Sync All Device Links
+
+Supported: modem
+
+This function will perform the import-scenes command on all devices.
+
+The command payload is as follows.  Setting the dry_run flag to true will cause
+the changes to be made to the file, the default false will only report what
+would happen:
+
+  ```
+  { "cmd" : "import_scenes_all", ["dry_run" : true/false]}
+  ```
+
+ This command can also be run from the command line:
+
+  ```
+  insteon-mqtt config.yaml import-scenes-all
+  ```
 
 ### Activate all linking mode
 
@@ -194,6 +279,8 @@ information even if known.  The command payload is:
    { "cmd" : "refresh", ["force" : true/false] }
    ```
 
+If the device reports a state change because of the refresh command the
+reason string will be set to "refresh".
 
 ### Refresh all devices
 
@@ -329,10 +416,27 @@ The MQTT format of the command is:
 
 Switch, KeypadLinc, and Dimmer all support the flags:
 
-   - backlight: integer in the range 0x11-0xff which changes the LED backlight
+   - backlight: integer in the range 0x00-0xff which changes the LED backlight
      level on the device.
    - on_level: integer in the range 0x00-0xff which sets the on level that will
      be used when the button is pressed.
+   - load_attached: 0/1 to attach or detach the load from the group 1 button.
+   - follow_mask: 8 bit integer flags - 1 per button.  Requires a group=N
+     input as well.  This sets the follow mask for the input group.  When
+     that button is pressed, any button with the bit set in this mask will be
+     changed to match the state of the button.  This is used for the 6 button
+     device to have the groups (1,2) and (7,8) stay in sync.
+   - off_mask: 8 bit integer flags - 1 per button.  Requires a group=N input
+     as well.  This sets the off mask for the input group.  When that button
+     is pressed, all the buttons with the bits set in this mask will turn
+     off.  This is used to implement radio buttons.
+   - signal_bits: 8 bit integer flags - 1 per button.  Only used for
+     non-toggle buttons.  If a bit is 1, then the button only sends on
+     commands.  If a bit is 0, then the button only sends off commands.
+   - nontoggle_bits: 8 bit integer flags - 1 per button.  If a bit is 1, then
+     that button is a non-toggle button and will only send a signal per the
+     signal_bits input.  If a bit is 0, then that button is a toggle button
+     and will alternate on an doff signals
 
 IOLinc supports the flags:
 
@@ -341,7 +445,21 @@ IOLinc supports the flags:
    - trigger_reverse: 0/1 reverses the trigger command state
    - relay_linked: 0/1 links the relay to the sensor value
 
+Motion Sensors support the flags:
 
+   - led_on: 0/1 - Should led on the device flash on motion?
+
+   - night_only: 0/1 - Should motion only be reported at night?
+
+   - on_only: 0/1 - Should only on motions be reported with no off messages?
+
+   - timeout: seconds between state updates (30 second increments, 2842
+     models allow between 30 seconds to 4 hours, the 2844 models allow
+     between 30 seconds and 40 minutes).
+
+   - light_sensitivity: 1-255:  Amount of darkness required for night
+     to be triggered.  Affects night_only mode as well as the dawn/dusk
+     reporting
 
 ### Print the current all link database.
 
@@ -365,10 +483,21 @@ controller).  For devices, the group is the button number and this will
 simulate pressing the button on the device.  Note that devices do not work
 properly with the off command - they will emit the off scene message but not
 actually turn off themselves so insteon-mqtt will send an off command to the
-device once the scene messages are done.
+device once the scene messages are done.  The reason field is optional and
+will be passed through to the output state change payload.
 
    ```
-   { "cmd": "scene", "group" : group, "is_on" : 0/1 }
+   { "cmd": "scene", "group" : group, "is_on" : 0/1, ["reason" : "..."] }
+   ```
+
+   Supported: modem
+
+   The modem also allows the triggering of scenes from a name defined in a
+   [Scene Management](scenes.md) file as well. To access a scene by its name
+   simply drop the group attribute and add the name attribute such as.
+
+   ```
+   { "cmd": "scene", "name" : "test_scene", "is_on" : 0/1, ["reason" : "..."] }
    ```
 
 
@@ -418,6 +547,11 @@ which can be used in the templates:
    - 'mode' is the on/off mode: 'normal', 'fast', or instant'
    - 'fast' is 1 if the mode is fast, 0 otherwise
    - 'instant' is 1 if the mode is instant, 0 otherwise
+   - 'reason' is the reason for the change.  'device' if a button was pressed
+     on the device.  'scene' if the device is responding to a scene trigger.
+     'refresh' if the update is from a refresh'.  'command' if the device is
+     responding to an on/off command.  Or an arbitrary string if one was
+     passed in via the scene or on/off style command inputs.
 
 Manual state output is invoked when a button on the device is held down.
 Manual mode flags are UP or DOWN (when the on or off button is pressed and
@@ -495,6 +629,11 @@ which can be used in the templates:
    - 'mode' is the on/off mode: 'normal', 'fast', or instant'
    - 'fast' is 1 if the mode is fast, 0 otherwise
    - 'instant' is 1 if the mode is instant, 0 otherwise
+   - 'reason' is the reason for the change.  'device' if a button was pressed
+     on the device.  'scene' if the device is responding to a scene trigger.
+     'refresh' if the update is from a refresh'.  'command' if the device is
+     responding to an on/off command.  Or an arbitrary string if one was
+     passed in via the scene or on/off style command inputs.
 
 Manual state output is invoked when a button on the device is held down.
 Manual mode flags are UP or DOWN (when the on or off button is pressed and
@@ -583,6 +722,11 @@ which can be used in the templates:
    - 'level' is the integer speed level 0-3 for off (0), low (1), medium (2),
       and high (3)
    - 'level_str' is the speed level 'off', 'low', 'medium', or 'high'.
+   - 'reason' is the reason for the change.  'device' if a button was pressed
+     on the device.  'scene' if the device is responding to a scene trigger.
+     'refresh' if the update is from a refresh'.  'command' if the device is
+     responding to an on/off command.  Or an arbitrary string if one was
+     passed in via the scene or on/off style command inputs.
 
 Input state change messages have the following variables defined which
 can be used in the templates:
@@ -658,6 +802,11 @@ The button change defines the following variables for templates:
    - 'mode' is the on/off mode: 'normal', 'fast', or instant'
    - 'fast' is 1 if the mode is fast, 0 otherwise
    - 'instant' is 1 if the mode is instant, 0 otherwise
+   - 'reason' is the reason for the change.  'device' if a button was pressed
+     on the device.  'scene' if the device is responding to a scene trigger.
+     'refresh' if the update is from a refresh'.  'command' if the device is
+     responding to an on/off command.  Or an arbitrary string if one was
+     passed in via the scene or on/off style command inputs.
 
 Manual state output is invoked when a button on the device is held down.
 Manual mode flags are UP or DOWN (when the on or off button is pressed and
@@ -667,6 +816,7 @@ name, address, and:
    - 'manual_str' = 'up'/'off'/'down'
    - 'manual' = 1/0/-1
    - 'manual_openhab' = 2/1/0
+   - 'reason' (see above)
 
 A sample remote control topic and payload configuration is:
 
@@ -880,6 +1030,11 @@ which can be used in the templates:
    - 'mode' is the on/off mode: 'normal', 'fast', or instant'
    - 'fast' is 1 if the mode is fast, 0 otherwise
    - 'instant' is 1 if the mode is instant, 0 otherwise
+   - 'reason' is the reason for the change.  'device' if a button was pressed
+     on the device.  'scene' if the device is responding to a scene trigger.
+     'refresh' if the update is from a refresh'.  'command' if the device is
+     responding to an on/off command.  Or an arbitrary string if one was
+     passed in via the scene or on/off style command inputs.
 
 Input state change messages have the following variables defined which
 can be used in the templates:
@@ -1058,4 +1213,23 @@ Sample Configuration:
   cool_sp_payload: '{ "temp_f" : {{value}} }'
   ```
 
+### Polling
+
+If the 'pair' command has been run correctly, the thermostat should push
+ambient temp, setpoint temps, humdity, and status message automatically.
+However if you want, you can poll the device for the status of these values
+as well by running 'get_status'.  This command will also get the units (C or F)
+specified on the device, which is necessary for properly decoding some of the
+temp messages from the device.  This command is also run as part of a 'refresh'.
+So if you are seeing strange temperatures, try running this command or 'refresh'
+
+Topic:
+  ```
+  insteon/command/aa.bb.cc
+  ```
+
+Payload:
+  ```
+  { "cmd" : "get_status"}
+  ```
 ---

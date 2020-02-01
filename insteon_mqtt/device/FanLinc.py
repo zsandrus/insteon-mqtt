@@ -4,11 +4,13 @@
 #
 #===========================================================================
 import enum
+import functools
 from .Dimmer import Dimmer
 from ..CommandSeq import CommandSeq
 from .. import handler
 from .. import log
 from .. import message as Msg
+from .. import on_off
 from ..Signal import Signal
 from .. import util
 
@@ -27,11 +29,12 @@ class FanLinc(Dimmer):
     connect to these signals to perform an action when a change is made to
     the device (like sending MQTT messages).  Supported signals are:
 
-    - signal_fan_speed( Device, bool is_on, on_off.Mode mode ):
+    - signal_fan_speed( Device, bool is_on, on_off.Mode mode, str reason ):
       Sent whenever the switch is turned on or off.
 
-    - signal_manual( Device, on_off.Manual mode ): Sent when the device
-      starts or stops manual mode (when a button is held down or released).
+    - signal_manual( Device, on_off.Manual mode, str reason ): Sent when the
+      device starts or stops manual mode (when a button is held down or
+      released).
 
     """
     type_name = "fan_linc"
@@ -66,7 +69,7 @@ class FanLinc(Dimmer):
         self._fan_speed = FanLinc.Speed.OFF
         self._last_speed = None
 
-        # Support fan speed signals.  API: func(Device, Speed)
+        # Support fan speed signals.  API: func(Device, Speed, str reason)
         self.signal_fan_speed = Signal()
 
         # Remote (mqtt) commands mapped to methods calls.  Add to the base
@@ -164,7 +167,7 @@ class FanLinc(Dimmer):
         seq.run()
 
     #-----------------------------------------------------------------------
-    def fan_on(self, speed=None, on_done=None):
+    def fan_on(self, speed=None, reason="", on_done=None):
         """Turn the fan on.
 
         NOTE: This does NOT simulate a button press on the device - it just
@@ -180,6 +183,9 @@ class FanLinc(Dimmer):
           speed (Speed):  The speed to change to.  If this is None or Speed.ON,
                 the last speed that was active is used.  If there is no last
                 speed set, use MEDIUM.
+          reason (str):  This is optional and is used to identify why the
+                 command was sent. It is passed through to the output signal
+                 when the state changes - nothing else is done with it.
           on_done: Finished callback.  This is called when the command has
                    completed.  Signature is: on_done(success, msg, data)
         """
@@ -200,12 +206,12 @@ class FanLinc(Dimmer):
 
         # Use the standard command handler which will notify us when the
         # command is ACK'ed.
-        msg_handler = handler.StandardCmd(msg, self.handle_speed, on_done,
-                                          num_retry=3)
+        callback = functools.partial(self.handle_speed, reason=reason)
+        msg_handler = handler.StandardCmd(msg, callback, on_done, num_retry=3)
         self.send(msg, msg_handler)
 
     #-----------------------------------------------------------------------
-    def fan_off(self, on_done=None):
+    def fan_off(self, reason="", on_done=None):
         """Turn the fan off.
 
         NOTE: This does NOT simulate a button press on the device - it just
@@ -218,6 +224,9 @@ class FanLinc(Dimmer):
         and emit the state changed signals.
 
         Args:
+          reason (str):  This is optional and is used to identify why the
+                 command was sent. It is passed through to the output signal
+                 when the state changes - nothing else is done with it.
           on_done: Finished callback.  This is called when the command has
                    completed.  Signature is: on_done(success, msg, data)
         """
@@ -231,11 +240,12 @@ class FanLinc(Dimmer):
 
         # Use the standard command handler which will notify us when the
         # command is ACK'ed.
-        msg_handler = handler.StandardCmd(msg, self.handle_speed, on_done)
+        callback = functools.partial(self.handle_speed, reason=reason)
+        msg_handler = handler.StandardCmd(msg, callback, on_done)
         self.send(msg, msg_handler)
 
     #-----------------------------------------------------------------------
-    def fan_set(self, speed, on_done=None):
+    def fan_set(self, speed, reason="", on_done=None):
         """Set the fan speed.
 
         NOTE: This does NOT simulate a button press on the device - it just
@@ -251,15 +261,18 @@ class FanLinc(Dimmer):
           speed (Speed):  The speed to change to.  If this is None or Speed.ON,
                 the last speed that was active is used.  If there is no last
                 speed set, use MEDIUM.
+          reason (str):  This is optional and is used to identify why the
+                 command was sent. It is passed through to the output signal
+                 when the state changes - nothing else is done with it.
           on_done: Finished callback.  This is called when the command has
                    completed.  Signature is: on_done(success, msg, data)
         """
         assert isinstance(speed, FanLinc.Speed)
 
         if speed != FanLinc.Speed.OFF:
-            self.fan_on(speed, on_done=on_done)
+            self.fan_on(speed, reason, on_done)
         else:
-            self.fan_off(on_done=on_done)
+            self.fan_off(reason, on_done)
 
     #-----------------------------------------------------------------------
     def handle_broadcast(self, msg):
@@ -302,10 +315,10 @@ class FanLinc(Dimmer):
         LOG.ui("Fan %s refresh speed at %s", self.addr, msg.cmd2)
 
         # Current fan speed is stored in cmd2 so update our speed to match.
-        self._set_fan_speed(msg.cmd2)
+        self._set_fan_speed(msg.cmd2, reason=on_off.REASON_REFRESH)
 
     #-----------------------------------------------------------------------
-    def handle_speed(self, msg, on_done=None):
+    def handle_speed(self, msg, on_done=None, reason=""):
         """Callback for handling speed change messages.
 
         This callback is run when we get a reply back from one of our
@@ -317,6 +330,9 @@ class FanLinc(Dimmer):
           msg (InpStandard):  The response message from the command.
           on_done: Finished callback.  This is called when the command has
                    completed.  Signature is: on_done(success, msg, data)
+          reason (str):  This is optional and is used to identify why the
+                 command was sent. It is passed through to the output signal
+                 when the state changes - nothing else is done with it.
         """
         on_done = util.make_callback(on_done)
 
@@ -325,7 +341,8 @@ class FanLinc(Dimmer):
         if msg.flags.type == Msg.Flags.Type.DIRECT_ACK:
             LOG.debug("FanLinc fan %s ACK: %s", self.addr, msg)
 
-            self._set_fan_speed(msg.cmd2)
+            reason = reason if reason else on_off.REASON_COMMAND
+            self._set_fan_speed(msg.cmd2, reason)
             on_done(True, "Fan %s state updated to %s" %
                     (self.addr, self._fan_speed), msg.cmd2)
 
@@ -351,11 +368,6 @@ class FanLinc(Dimmer):
           msg (InpStandard):  Broadcast message from the device.  Use
               msg.group to find the group and msg.cmd1 for the command.
         """
-        # Group 1 is for the dimmer - pass that to the base class:
-        if msg.group == 1:
-            super().handle_group_cmd(addr, msg)
-            return
-
         # Make sure we're really a responder to this message.  This shouldn't
         # ever occur.
         entry = self.db.find(addr, msg.group, is_controller=False)
@@ -364,20 +376,139 @@ class FanLinc(Dimmer):
                       msg.group, addr)
             return
 
+        # The local button being modified is stored in the db entry.
+        localGroup = entry.data[2]
+
+        # Group 1 is for the dimmer - pass that to the base class:
+        if localGroup == 1:
+            super().handle_group_cmd(addr, msg)
+            return
+
         # 0x11: on
         if msg.cmd1 == 0x11:
-            self._set_fan_speed(entry.data[0])
+            self._set_fan_speed(entry.data[0], on_off.REASON_SCENE)
 
         # 0x13: off
         elif msg.cmd1 == 0x13:
-            self._set_fan_speed(0x00)
+            self._set_fan_speed(0x00, on_off.REASON_SCENE)
 
         else:
             LOG.warning("FanLink %s unknown group cmd %#04x", self.addr,
                         msg.cmd1)
 
     #-----------------------------------------------------------------------
-    def _set_fan_speed(self, speed):
+    def link_data(self, is_controller, group, data=None):
+        """Create default device 3 byte link data.
+
+        This is the 3 byte field (D1, D2, D3) stored in the device database
+        entry.  This overrides the defaults specified in base.py for
+        specific values used by dimming devices.
+
+        For controllers, the default fields are:
+           D1: number of retries (0x03)
+           D2: unknown (0x00)
+           D3: the group number on the local device (0x01)
+
+        For responders, the default fields are:
+           D1: on level for switches and dimmers (0xff)
+           D2: ramp rate light fixture only (0x1f, or .1s)
+           D3: the group number on the local device (0x01)
+
+        Args:
+          is_controller (bool): True if the device is the controller, false
+                        if it's the responder.
+          group (int): The group number of the controller button or the
+                group number of the responding button.
+          data (bytes[3]): Optional 3 byte data entry.  If this is None,
+               defaults are returned.  Otherwise it must be a 3 element list.
+               Any element that is not None is replaced with the default.
+
+        Returns:
+          bytes[3]: Returns a list of 3 bytes to use as D1,D2,D3.
+        """
+        # Most of this is from looking through Misterhouse bug reports.
+        if is_controller:
+            defaults = [0x03, 0x00, group]
+
+        # Responder data is always link dependent.  Since nothing was given,
+        # assume the user wants to turn the device on (0xff).
+        else:
+            data_2 = 0x00
+            if group <= 0x01:
+                data_2 = 0x1f
+            defaults = [0xff, data_2, group]
+
+        # For each field, use the input if not -1, else the default.
+        return util.resolve_data3(defaults, data)
+
+    #-----------------------------------------------------------------------
+    def link_data_to_pretty(self, is_controller, data):
+        """Converts Link Data1-3 to Human Readable Attributes
+
+        This takes a list of the data values 1-3 and returns a dict with
+        the human readable attibutes as keys and the human readable values
+        as values.
+
+        Args:
+          is_controller (bool): True if the device is the controller, false
+                        if it's the responder.
+          data (list[3]): List of three data values.
+
+        Returns:
+          list[3]:  list, containing a dict of the human readable values
+        """
+        ret = [{'data_1': data[0]}, {'data_2': data[1]}, {'data_3': data[2]}]
+        if not is_controller:
+            ret = [{'on_level': int((data[0] / .255) + .5) / 10},
+                   {'data_2': data[1]},
+                   {'group': data[2]}]
+            if data[2] <= 0x01:
+                ramp = 0x1f  # default
+                if data[1] in Dimmer.ramp_pretty:
+                    ramp = Dimmer.ramp_pretty[data[1]]
+                ret = [{'on_level': int((data[0] / .255) + .5) / 10},
+                       {'ramp_rate': ramp},
+                       {'group': data[2]}]
+        return ret
+
+    #-----------------------------------------------------------------------
+    def link_data_from_pretty(self, is_controller, data):
+        """Converts Link Data1-3 from Human Readable Attributes
+
+        This takes a dict of the human readable attributes as keys and their
+        associated values and returns a list of the data1-3 values.
+
+        Args:
+          is_controller (bool): True if the device is the controller, false
+                        if it's the responder.
+          data (dict[3]): Dict of three data values.
+
+        Returns:
+          list[3]: List of Data1-3 values
+        """
+        data_1 = None
+        if 'data_1' in data:
+            data_1 = data['data_1']
+        data_2 = None
+        if 'data_2' in data:
+            data_2 = data['data_2']
+        data_3 = None
+        if 'data_3' in data:
+            data_3 = data['data_3']
+        if not is_controller:
+            if 'group' in data:
+                data_3 = data['group']
+                if 'ramp' in data and data['group'] <= 0x01:
+                    data_2 = 0x1f
+                    for ramp_key, ramp_value in Dimmer.ramp_pretty:
+                        if data['ramp'] >= ramp_value:
+                            data_2 = ramp_key
+            if 'on_level' in data:
+                data_1 = int(data['on_level'] * 2.55 + .5)
+        return [data_1, data_2, data_3]
+
+    #-----------------------------------------------------------------------
+    def _set_fan_speed(self, speed, reason=""):
         """Update the device fan speed.
 
         This will change the internal state and emit the state changed
@@ -386,8 +517,11 @@ class FanLinc(Dimmer):
 
         Args:
           speed (Speed):  The speed to change to.
+          reason (str):  This is optional and is used to identify why the
+                 command was sent. It is passed through to the output signal
+                 when the state changes - nothing else is done with it.
         """
-        LOG.info("Setting device %s on %s", self.label, speed)
+        LOG.info("Setting device %s on %s %s", self.label, speed, reason)
 
         self._fan_speed = FanLinc.Speed.OFF
 
@@ -405,6 +539,6 @@ class FanLinc(Dimmer):
         if self._fan_speed != FanLinc.Speed.OFF:
             self._last_speed = self._fan_speed
 
-        self.signal_fan_speed.emit(self, self._fan_speed)
+        self.signal_fan_speed.emit(self, self._fan_speed, reason)
 
     #-----------------------------------------------------------------------
