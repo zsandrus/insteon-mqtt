@@ -345,15 +345,13 @@ class SceneManager:
                     self.modem.scene_map[scene.name] = controller.group
                 for responder in scene.responders:
                     # Generate Controller Entries
-                    if controller.device is not None and not 
-                            (controller.addr == responder.addr and
-                            controller.group == responder.group):
+                    if (controller.device is not None and
+                            controller.addr != responder.addr):
                         controller.device.db_config.add_from_config(responder,
                                                                     controller)
                     # Generate Responder Entries
-                    if (responder.device is not None and not 
-                            (controller.addr == responder.addr and
-                            controller.group == responder.group):
+                    if (responder.device is not None and
+                            controller.addr != responder.addr):
                         responder.device.db_config.add_from_config(controller,
                                                                    responder)
 
